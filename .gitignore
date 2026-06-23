@@ -1,0 +1,37 @@
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Bytecode e cache do Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Distribuição/empacotamento
+build/
+dist/
+*.egg-info/
+
+# Ferramentas de teste e cobertura
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Ferramentas de lint/type-check
+.mypy_cache/
+.ruff_cache/
+
+# IDEs e editores
+.vscode/
+.idea/
+
+# Banco de dados local
+*.db
+
+# Variáveis de ambiente
+.env
+
+# Sistema operacional
+.DS_Store
+Thumbs.db
