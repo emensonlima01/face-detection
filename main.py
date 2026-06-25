@@ -6,12 +6,13 @@ from pathlib import Path
 import cv2
 import mediapipe as mp
 
+from create_table import create_table
+
 DB_PATH = Path(__file__).parent / "face_detection.db"
 ACCEPTABLE_CONFIDENCE = 0.9
 MIN_FACE_SIZE_RATIO = 0.15
 
 mp_face_detection = mp.solutions.face_detection
-mp_drawing = mp.solutions.drawing_utils
 
 
 def insert_detection(
@@ -55,6 +56,29 @@ def insert_detection(
         )
 
 
+def draw_face_overlay(
+    frame, bbox_px: tuple[int, int, int, int], keypoints_px, confidence: float, is_complete: bool
+) -> None:
+    x, y, w, h = bbox_px
+    color = (0, 220, 0) if is_complete else (0, 165, 255)
+    corner_len = max(int(min(w, h) * 0.2), 8)
+    thickness = 2
+
+    corners = ((x, y, 1, 1), (x + w, y, -1, 1), (x, y + h, 1, -1), (x + w, y + h, -1, -1))
+    for corner_x, corner_y, dx, dy in corners:
+        cv2.line(frame, (corner_x, corner_y), (corner_x + dx * corner_len, corner_y), color, thickness, cv2.LINE_AA)
+        cv2.line(frame, (corner_x, corner_y), (corner_x, corner_y + dy * corner_len), color, thickness, cv2.LINE_AA)
+
+    for point_x, point_y in keypoints_px:
+        cv2.circle(frame, (point_x, point_y), 2, color, -1, lineType=cv2.LINE_AA)
+
+    label = f"{confidence * 100:.0f}%"
+    cv2.putText(
+        frame, label, (x, max(y - 10, 15)),
+        cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2, cv2.LINE_AA,
+    )
+
+
 def is_face_complete(confidence: float, box) -> bool:
     within_frame = (
         box.xmin >= 0
@@ -85,18 +109,28 @@ def detect_faces(
     )
 
     for detection in results.detections:
-        mp_drawing.draw_detection(frame, detection)
-
         confidence = detection.score[0]
         box = detection.location_data.relative_bounding_box
+        is_complete = is_face_complete(confidence, box)
 
-        if is_face_complete(confidence, box):
+        if is_complete:
             found_complete_face = True
 
         keypoints = {
             name: (point.x, point.y)
             for name, point in zip(keypoint_names, detection.location_data.relative_keypoints)
         }
+        bbox_px = (
+            int(box.xmin * frame_width),
+            int(box.ymin * frame_height),
+            int(box.width * frame_width),
+            int(box.height * frame_height),
+        )
+        keypoints_px = [
+            (int(px * frame_width), int(py * frame_height)) for px, py in keypoints.values()
+        ]
+
+        draw_face_overlay(frame, bbox_px, keypoints_px, confidence, is_complete)
 
         insert_detection(
             request_id=request_id,
@@ -107,12 +141,7 @@ def detect_faces(
             frame_height=frame_height,
             confidence=confidence,
             bbox=(box.xmin, box.ymin, box.width, box.height),
-            bbox_px=(
-                int(box.xmin * frame_width),
-                int(box.ymin * frame_height),
-                int(box.width * frame_width),
-                int(box.height * frame_height),
-            ),
+            bbox_px=bbox_px,
             keypoints=keypoints,
         )
 
@@ -120,6 +149,8 @@ def detect_faces(
 
 
 def capture_frames(camera_index: int = 0) -> str:
+    create_table()
+
     request_id = str(uuid.uuid4())
     frame_number = 0
 
